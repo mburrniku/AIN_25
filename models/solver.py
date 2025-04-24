@@ -1878,3 +1878,153 @@ class Solver:
             if best_solution.fitness_score > shared_best["score"]:
                 shared_best["score"] = best_solution.fitness_score
                 shared_best["solution"] = best_solution
+
+
+    def run_grasp_hybrid(self, data, p_percentage, grasp_iterations, sa_steps, hc_iterations, max_time):
+        import time, copy, random, math
+        from models.library import Library
+
+        Library._id_counter = 0  # Reset library ID counter for every file run
+
+        start_time = time.time()
+        best_solution = None
+        best_score = float('-inf')
+        best_iterations = 0
+
+        lib_lookup = {lib.id: lib for lib in data.libs if lib is not None}
+        valid_lib_ids = set(lib_lookup.keys())
+
+        tweak_operators = [
+            self.tweak_solution_swap_last_book,
+            self.tweak_solution_swap_signed,
+            self.tweak_solution_swap_signed_with_unsigned,
+            self.tweak_solution_swap_same_books
+        ]
+
+        iteration = 0
+        while time.time() - start_time < max_time and iteration < grasp_iterations:
+            iteration += 1
+
+            curr_time = 0
+            scanned_books = set()
+            signed_libraries = []
+            scanned_books_per_library = {}
+            remaining_libs = set(valid_lib_ids)
+
+            while remaining_libs:
+                remaining_libs = {lib_id for lib_id in remaining_libs if lib_id in lib_lookup}
+                candidates = []
+
+                for lib_id in remaining_libs:
+                    lib = lib_lookup[lib_id]
+                    if curr_time + lib.signup_days >= data.num_days:
+                        continue
+
+                    time_left = data.num_days - (curr_time + lib.signup_days)
+                    max_books = time_left * lib.books_per_day
+                    available_books = [book.id for book in lib.books if book.id not in scanned_books][:max_books]
+
+                    if not available_books:
+                        continue
+
+                    adjusted_score = sum(
+                        data.scores[b] * (data.num_days - (curr_time + lib.signup_days)) / data.num_days
+                        for b in available_books
+                    )
+                    heuristic = adjusted_score / lib.signup_days
+                    candidates.append((lib_id, heuristic))
+
+                if not candidates:
+                    break
+
+                candidates.sort(key=lambda x: -x[1])
+                rcl = candidates[:max(1, int(len(candidates) * p_percentage))]
+                chosen_lib_id = random.choice(rcl)[0]
+                lib = lib_lookup[chosen_lib_id]
+                remaining_libs.remove(chosen_lib_id)
+
+                if curr_time + lib.signup_days >= data.num_days:
+                    continue
+
+                curr_time += lib.signup_days
+                time_left = data.num_days - curr_time
+                max_books = time_left * lib.books_per_day
+
+                books_to_scan = sorted(
+                    [book.id for book in lib.books if book.id not in scanned_books],
+                    key=lambda b: -data.scores[b]
+                )[:max_books]
+
+                if books_to_scan:
+                    signed_libraries.append(lib.id)
+                    scanned_books_per_library[lib.id] = books_to_scan
+                    scanned_books.update(books_to_scan)
+
+            signed_libraries = [lib_id for lib_id in signed_libraries if lib_id in lib_lookup]
+            scanned_books_per_library = {
+                lib_id: books for lib_id, books in scanned_books_per_library.items() if lib_id in lib_lookup
+            }
+
+            sol = Solution(signed_libraries, list(remaining_libs), scanned_books_per_library, scanned_books)
+            sol = self.validate_solution(sol, data)
+            sol.calculate_fitness_score(data.scores)
+
+            temperature = 1000.0
+            final_temp = 1.0
+            current = copy.deepcopy(sol)
+            best_local = copy.deepcopy(sol)
+
+            for step in range(sa_steps):
+                temperature = 1000.0 * ((final_temp / 1000.0) ** (step / sa_steps))
+                tweak_op = random.choice(tweak_operators)
+                try:
+                    neighbor = tweak_op(copy.deepcopy(current), data)
+                    neighbor = self.validate_solution(neighbor, data)
+                    neighbor.calculate_fitness_score(data.scores)
+                    delta = neighbor.fitness_score - current.fitness_score
+                    if delta > 0 or random.random() < math.exp(delta / max(temperature, 1e-6)):
+                        current = neighbor
+                        if current.fitness_score > best_local.fitness_score:
+                            best_local = copy.deepcopy(current)
+                except (IndexError, KeyError):
+                    continue
+
+            # Multiple crossovers (vetëm nëse ka një zgjidhje paraprake)
+            if best_solution:
+                try:
+                    offspring_variants = []
+                    for _ in range(3):
+                        child = self.crossover(best_solution, data)
+                        child = self.validate_solution(child, data)
+                        child.calculate_fitness_score(data.scores)
+                        offspring_variants.append(child)
+                    for child in offspring_variants:
+                        if child.fitness_score > best_local.fitness_score:
+                            best_local = child
+                except (IndexError, KeyError, TypeError):
+                    pass
+
+            # Hill Climbing me të gjithë operatorët
+            for _ in range(hc_iterations):
+                improved = False
+                for tweak_op in tweak_operators:
+                    try:
+                        new_sol = tweak_op(copy.deepcopy(best_local), data)
+                        new_sol = self.validate_solution(new_sol, data)
+                        new_sol.calculate_fitness_score(data.scores)
+                        if new_sol.fitness_score > best_local.fitness_score:
+                            best_local = new_sol
+                            improved = True
+                            break
+                    except (IndexError, KeyError):
+                        continue
+                if not improved:
+                    break
+
+            if best_local.fitness_score > best_score:
+                best_score = best_local.fitness_score
+                best_solution = best_local
+                best_iterations = iteration
+
+        print(f"Best score found after {best_iterations} iterations")
+        return best_solution

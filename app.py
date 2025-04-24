@@ -146,20 +146,20 @@ directory = os.listdir('input')
 #         print(f"Best Fitness Score for {file}: {optimized_solution.fitness_score}")
 
 
-print("---------- Feature-based Tabu Search ----------")
+# print("---------- Feature-based Tabu Search ----------")
 
-for file in directory:
+# for file in directory:
 
-    if file.endswith('.txt'):
-        parser = Parser(f'./input/{file}')
-        data = parser.parse()
-        solver = Solver()
-        initial_solution = solver.generate_initial_solution_grasp(data)
-        optimized_solution = solver.feature_based_tabu_search(initial_solution, data, tabu_max_len=10, n=5, max_iterations=100)
+#     if file.endswith('.txt'):
+#         parser = Parser(f'./input/{file}')
+#         data = parser.parse()
+#         solver = Solver()
+#         initial_solution = solver.generate_initial_solution_grasp(data)
+#         optimized_solution = solver.feature_based_tabu_search(initial_solution, data, tabu_max_len=10, n=5, max_iterations=100)
 
-        # optimized_solution.export('./output/output.txt')
+#         # optimized_solution.export('./output/output.txt')
 
-        print(f"Best Fitness Score for {file}: {optimized_solution.fitness_score}")
+#         print(f"Best Fitness Score for {file}: {optimized_solution.fitness_score}")
 
 
 # print("---------- ITERATED LOCAL SEARCH WITH RANDOM RESTARTS ----------")
@@ -309,32 +309,32 @@ os.makedirs(output_folder, exist_ok=True)
 #     'switch_book_instance.txt'
 # ]
 
-print("---------- VARIABLE NEIGHBORHOOD SEARCH ----------")
+# print("---------- VARIABLE NEIGHBORHOOD SEARCH ----------")
 
-for filename in os.listdir(input_folder):
-    if filename.endswith('.txt'):
-        input_path = os.path.join(input_folder, filename)
-        output_path = os.path.join(output_folder, f'vns_{filename}')
+# for filename in os.listdir(input_folder):
+#     if filename.endswith('.txt'):
+#         input_path = os.path.join(input_folder, filename)
+#         output_path = os.path.join(output_folder, f'vns_{filename}')
 
-        try:
-            print(f"Parsing {filename}...")
-            parser = Parser(input_path)
-            data = parser.parse()
+#         try:
+#             print(f"Parsing {filename}...")
+#             parser = Parser(input_path)
+#             data = parser.parse()
 
-            print(f"Running VNS on {filename}...")
+#             print(f"Running VNS on {filename}...")
 
-            # Run VNS algorithm
-            score, solution = solver.variable_neighborhood_search(data, time_limit_ms=10000)
+#             # Run VNS algorithm
+#             score, solution = solver.variable_neighborhood_search(data, time_limit_ms=10000)
 
-            # Export the solution
-            solution.export(output_path)
+#             # Export the solution
+#             solution.export(output_path)
 
-            print(f'Final VNS score for {filename}: {score:,}')
-            print(f'Solution exported to: {output_path}')
-            print('-' * 50)
+#             print(f'Final VNS score for {filename}: {score:,}')
+#             print(f'Solution exported to: {output_path}')
+#             print('-' * 50)
 
-        except Exception as e:
-            print(f" Error processing {filename}: {e}")
+#         except Exception as e:
+#             print(f" Error processing {filename}: {e}")
 
 # print("---------- GREAT DELUGE ALGORITHM ----------")
 # for file in directory:
@@ -373,20 +373,45 @@ for filename in os.listdir(input_folder):
 #             solution.export(f'./output/hybrid_evolutionary_{file}')
 #             print(f'Final score: {score:,}')
 #             print(f'Solution exported to ./output/hybrid_evolutionary_{file}')
-def run_parallel_sa():
+# def run_parallel_sa():
 
-    print("---------- SIMULATED ANNEALING WITH MULTIPLE TEMPERATURE FUNCTIONS (PARALLEL) ----------")
-    for file in directory:
-        if file.endswith('.txt'):
-            print(f'Computing ./input/{file}')
-            parser = Parser(f'./input/{file}')
-            data = parser.parse()
-            score, solution = solver.simulated_annealing_hybrid_parallel(data, max_iterations=1000)
-            print(f'Best score from SA (parallel) for {file}: {score:,}')
-            output_file = f'./output/sa_hybrid_parallel_{file}'
-            solution.export(output_file)
-            print(f"Processing complete! Output written to: {output_file}")
+#     print("---------- SIMULATED ANNEALING WITH MULTIPLE TEMPERATURE FUNCTIONS (PARALLEL) ----------")
+#     for file in directory:
+#         if file.endswith('.txt'):
+#             print(f'Computing ./input/{file}')
+#             parser = Parser(f'./input/{file}')
+#             data = parser.parse()
+#             score, solution = solver.simulated_annealing_hybrid_parallel(data, max_iterations=1000)
+#             print(f'Best score from SA (parallel) for {file}: {score:,}')
+#             output_file = f'./output/sa_hybrid_parallel_{file}'
+#             solution.export(output_file)
+#             print(f"Processing complete! Output written to: {output_file}")
            
-if __name__ == "__main__":
-    multiprocessing.freeze_support()
-    run_parallel_sa()
+# if __name__ == "__main__":
+#     multiprocessing.freeze_support()
+#     run_parallel_sa()
+
+
+print("---------- Greedy Randomized Adaptive Search Procedures ----------")
+
+files = sorted(
+    [f for f in directory if f.endswith('.txt')],
+    key=lambda f: os.path.getsize(os.path.join('input', f))
+)
+
+for file in files:
+    print(f"Processing file: {file}")
+    parser = Parser(f'./input/{file}')
+    data = parser.parse()
+
+    solution = solver.run_grasp_hybrid(data, p_percentage=0.3, grasp_iterations=1000, sa_steps=1000, hc_iterations=1000, max_time=600)
+
+
+    output_path = f'./output/{file}'
+    solution.export(output_path)
+
+    print(f"Best score: {solution.fitness_score:,}")
+    print(f"Exported to: {output_path}")
+    print('-' * 50)
+
+
